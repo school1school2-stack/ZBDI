@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>لوحة التحكم الشاملة - أ/ عبدالعزيز الفيفي</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <style>
+        :root { --maroon: #800000; --gold: #d4af37; --bg: #fdfaf1; --danger: #c62828; --success: #28a745; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); padding: 20px; }
+        .admin-card { background: white; max-width: 1000px; margin: auto; border-radius: 15px; padding: 30px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); border-top: 8px solid var(--maroon); }
+        .header { text-align: center; border-bottom: 2px solid var(--gold); margin-bottom: 20px; padding-bottom: 10px; }
+        .bulk-section { background: #f4f4f4; padding: 20px; border-radius: 10px; margin-bottom: 25px; border: 1px dashed var(--maroon); }
+        textarea { width: 100%; height: 150px; padding: 10px; border-radius: 8px; border: 1px solid #ccc; font-family: sans-serif; resize: vertical; box-sizing: border-box; }
+        .controls { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+        .btn { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        .btn-upload { background: var(--maroon); color: var(--gold); }
+        .btn-delete-all { background: var(--danger); color: white; }
+        .btn-copy { background: #17a2b8; color: white; }
+        .btn-copy:hover { background: #138496; }
+        
+        .pending-section { background: #fff8e1; border: 2px solid #ffc107; padding: 15px; border-radius: 10px; margin-bottom: 25px; display: none; }
+        .pending-section h3 { color: #d32f2f; margin-top: 0; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; background: white; }
+        th { background: var(--maroon); color: var(--gold); padding: 12px; }
+        td { border-bottom: 1px solid #eee; padding: 10px; text-align: center; }
+        
+        .btn-approve { background: var(--success); color: white; border: none; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .btn-reject { background: var(--danger); color: white; border: none; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        
+        .stats-bar { display: flex; justify-content: space-between; background: #e9ecef; padding: 15px; border-radius: 8px; font-weight: bold; color: var(--maroon); font-size: 1.1rem; margin-bottom: 15px; }
+        .search-container { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; flex-wrap: wrap; gap: 10px; }
+        .search-container h3 { margin: 0; }
+        .search-box { padding: 10px 15px; width: 100%; max-width: 300px; border-radius: 8px; border: 1px solid #ccc; font-size: 1rem; outline: none; transition: 0.3s; }
+        .search-box:focus { border-color: var(--maroon); box-shadow: 0 0 5px rgba(128,0,0,0.2); }
+    </style>
+</head>
+<body>
+
+<div class="admin-card">
+    <div class="header">
+        <h2>لوحة التحكم الشاملة (ZBID) 🔒</h2>
+        <p>إدارة الطلاب المعتمدين ومراجعة طلبات التسجيل الجديدة</p>
+    </div>
+
+    <!-- قسم الطلبات المعلقة (قائمة الانتظار المستقلة) -->
+    <div class="pending-section" id="pendingSection">
+        <h3>🔔 طلبات تسجيل جديدة بانتظار المراجعة</h3>
+        <table id="pendingTable">
+            <thead>
+                <tr>
+                    <th>الاسم</th>
+                    <th>البريد الإلكتروني</th>
+                    <th>الإجراء</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <!-- قسم الرفع الجماعي -->
+    <div class="bulk-section">
+        <label><strong>لصق القائمة هنا (سيتم اعتمادهم مباشرة للمعتمدين):</strong></label>
+        <textarea id="bulkInput" placeholder="الصق هنا.. لا يهم إذا بدأ السطر بالاسم أو الإيميل"></textarea>
+        <div class="controls">
+            <button class="btn btn-upload" onclick="superSmartBulkAdd()">بدء المعالجة والرفع 🚀</button>
+            <button class="btn btn-delete-all" onclick="deleteAllStudents()">حذف الكل (المعتمدين) 🗑️</button>
+        </div>
+    </div>
+
+    <!-- شريط الإحصائيات -->
+    <div class="stats-bar">
+        <span id="approvedCount">الطلاب المعتمدين: 0</span>
+        <span id="pendingCountBadge" style="color: #d32f2f;">الطلبات المعلقة: 0</span>
+    </div>
+
+    <!-- رأس جدول المعتمدين مع زر النسخ ومربع البحث الذكي -->
+    <div class="search-container">
+        <h3>🎓 قائمة الطلاب المعتمدين (المصرح لهم بالاختبار)</h3>
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <button class="btn btn-copy" onclick="copyAllApproved()">📋 نسخ الكل (اسم وإيميل)</button>
+            <input type="text" id="searchInput" class="search-box" onkeyup="searchStudents()" placeholder="🔍 ابحث عن اسم الطالب أو إيميله...">
+        </div>
+    </div>
+
+    <table id="studentsTable">
+        <thead>
+            <tr>
+                <th>الاسم</th>
+                <th>البريد الإلكتروني</th>
+                <th>الإجراء</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</div>
+
+<script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyBkCO7FDQXd89YDf843J4_AtvEFvzzt-R0",
+        authDomain: "aztlg-494c3.firebaseapp.com",
+        projectId: "aztlg-494c3",
+        storageBucket: "aztlg-494c3.firebasestorage.app",
+        messagingSenderId: "597051893949",
+        appId: "1:597051893949:web:de5554ac900317a92b2fd4"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    function fetchStudents() {
+        const approvedTbody = document.querySelector("#studentsTable tbody");
+        const pendingTbody = document.querySelector("#pendingTable tbody");
+        const pendingSection = document.getElementById("pendingSection");
+
+        // 1. مراقبة جدول الطلاب المعتمدين (الذي يقرأ منه الاختبار)
+        db.collection("allowed_students").orderBy("name").onSnapshot((snapshot) => {
+            let approvedCount = snapshot.size;
+            approvedTbody.innerHTML = "";
+            document.getElementById("approvedCount").innerText = `الطلاب المعتمدين: ${approvedCount}`;
+
+            snapshot.forEach((doc) => {
+                const data = doc.data();
+                const email = doc.id;
+                approvedTbody.innerHTML += `
+                    <tr>
+                        <td>${data.name}</td>
+                        <td>${email}</td>
+                        <td><button class="btn-reject" onclick="deleteAllowed('${email}')">🗑️ حذف</button></td>
+                    </tr>`;
+            });
+            searchStudents();
+        });
+
+        // 2. مراقبة جدول الطلبات المعلقة (قائمة الانتظار)
+        db.collection("pending_students").orderBy("name").onSnapshot((snapshot) => {
+            let pendingCount = snapshot.size;
+            pendingTbody.innerHTML = "";
+            document.getElementById("pendingCountBadge").innerText = `الطلبات المعلقة: ${pendingCount}`;
+            pendingSection.style.display = pendingCount > 0 ? "block" : "none";
+
+            snapshot.forEach((doc) => {
+                const data = doc.data();
+                const email = doc.id;
+                pendingTbody.innerHTML += `
+                    <tr>
+                        <td>${data.name}</td>
+                        <td>${email}</td>
+                        <td>
+                            <button class="btn-approve" onclick="approveStudent('${email}', '${data.name}')">✅ قبول</button>
+                            <button class="btn-reject" onclick="deletePending('${email}')">❌ رفض</button>
+                        </td>
+                    </tr>`;
+            });
+        });
+    }
+
+    // دالة قبول الطالب (تنقله من الانتظار إلى مجموعة المعتمدين للاختبار)
+    async function approveStudent(email, name) {
+        try {
+            await db.collection("allowed_students").doc(email).set({
+                name: name,
+                added_at: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            await db.collection("pending_students").doc(email).delete();
+        } catch (error) {
+            alert("حدث خطأ أثناء الموافقة.");
+        }
+    }
+
+    // حذف طالب من المعلقين (رفض)
+    async function deletePending(email) {
+        if(confirm(`رفض وحذف ${email} من قائمة الانتظار؟`)) {
+            await db.collection("pending_students").doc(email).delete();
+        }
+    }
+
+    // حذف طالب من المعتمدين
+    async function deleteAllowed(email) {
+        if(confirm(`حذف ${email} من الطلاب المعتمدين؟`)) {
+            await db.collection("allowed_students").doc(email).delete();
+        }
+    }
+
+    // دالة الرفع الجماعي (تضيف مباشرة للمعتمدين)
+    async function superSmartBulkAdd() {
+        const input = document.getElementById("bulkInput").value.trim();
+        if(!input) return alert("يرجى لصق البيانات");
+
+        const lines = input.split('\n').map(l => l.trim()).filter(l => l !== "");
+        const batch = db.batch();
+        let count = 0;
+
+        for(let i = 0; i < lines.length; i++) {
+            let line1 = lines[i];
+            let line2 = lines[i+1];
+
+            if(!line2) break;
+
+            let name = "", email = "";
+
+            if(!line1.includes('@') && line2.includes('@')) {
+                name = line1; email = line2.toLowerCase();
+                i++;
+            } else if(line1.includes('@') && !line2.includes('@')) {
+                email = line1.toLowerCase(); name = line2;
+                i++;
+            }
+
+            if(name && email) {
+                const ref = db.collection("allowed_students").doc(email);
+                batch.set(ref, { name: name, added_at: firebase.firestore.FieldValue.serverTimestamp() });
+                count++;
+            }
+        }
+
+        if(count > 0) {
+            await batch.commit();
+            alert(`تم رفع واعتماد ${count} طالب مباشرة بنجاح!`);
+            document.getElementById("bulkInput").value = "";
+        } else {
+            alert("تنسيق غير معروف. تأكد من وجود الاسم والإيميل في سطرين متتاليين.");
+        }
+    }
+
+    async function deleteAllStudents() {
+        if(!confirm("تحذير: هل أنت متأكد من مسح جميع الطلاب المعتمدين؟")) return;
+        const snapshot = await db.collection("allowed_students").get();
+        const batch = db.batch();
+        snapshot.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+        alert("تمت تصفية قائمة المعتمدين.");
+    }
+
+    function searchStudents() {
+        let input = document.getElementById("searchInput");
+        let filter = input.value.toUpperCase();
+        let table = document.getElementById("studentsTable");
+        let tr = table.getElementsByTagName("tr");
+
+        for (let i = 1; i < tr.length; i++) {
+            let tdName = tr[i].getElementsByTagName("td")[0];
+            let tdEmail = tr[i].getElementsByTagName("td")[1];
+            
+            if (tdName || tdEmail) {
+                let txtValueName = tdName.textContent || tdName.innerText;
+                let txtValueEmail = tdEmail.textContent || tdEmail.innerText;
+                
+                if (txtValueName.toUpperCase().indexOf(filter) > -1 || txtValueEmail.toUpperCase().indexOf(filter) > -1) {
+                    tr[i].style.display = "";
+                } else {
+                    tr[i].style.display = "none";
+                }
+            }       
+        }
+    }
+
+    // دالة نسخ كافة الأسماء والإيميلات من الجدول
+    function copyAllApproved() {
+        const rows = document.querySelectorAll("#studentsTable tbody tr");
+        if (rows.length === 0) {
+            alert("لا توجد بيانات لنسخها!");
+            return;
+        }
+
+        let textToCopy = "";
+        rows.forEach(row => {
+            if (row.style.display !== "none") {
+                const cells = row.getElementsByTagName("td");
+                if (cells.length >= 2) {
+                    const name = cells[0].innerText.trim();
+                    const email = cells[1].innerText.trim();
+                    textToCopy += `${name}\t${email}\n`;
+                }
+            }
+        });
+
+        if (textToCopy === "") {
+            alert("لا توجد نتائج مطابقة للنسخ!");
+            return;
+        }
+
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            alert("✅ تم نسخ كافة الأسماء والإيميلات إلى الحافظة بنجاح!");
+        }).catch(err => {
+            alert("حدث خطأ أثناء النسخ: " + err);
+        });
+    }
+
+    fetchStudents();
+</script>
+
+</body>
+</html>
