@@ -79,7 +79,7 @@
     <div class="search-container">
         <h3>🎓 قائمة الطلاب المعتمدين (المصرح لهم بالاختبار)</h3>
         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-            <button class="btn btn-copy" onclick="copyAllApproved()">📋 نسخ الكل (اسم وإيميل)</button>
+            <button class="btn btn-copy" onclick="copyAllApproved()">📋 نسخ الكل (سطر بالاسم وسطر بالإيميل)</button>
             <input type="text" id="searchInput" class="search-box" onkeyup="searchStudents()" placeholder="🔍 ابحث عن اسم الطالب أو إيميله...">
         </div>
     </div>
@@ -255,7 +255,7 @@
         }
     }
 
-    // دالة نسخ كافة الأسماء والإيميلات من الجدول
+    // دالة نسخ الأسماء والإيميلات في أسطر متتالية
     function copyAllApproved() {
         const rows = document.querySelectorAll("#studentsTable tbody tr");
         if (rows.length === 0) {
@@ -270,7 +270,7 @@
                 if (cells.length >= 2) {
                     const name = cells[0].innerText.trim();
                     const email = cells[1].innerText.trim();
-                    textToCopy += `${name}\t${email}\n`;
+                    textToCopy += `${name}\n${email}\n`;
                 }
             }
         });
@@ -280,8 +280,8 @@
             return;
         }
 
-        navigator.clipboard.writeText(textToCopy).then(() => {
-            alert("✅ تم نسخ كافة الأسماء والإيميلات إلى الحافظة بنجاح!");
+        navigator.clipboard.writeText(textToCopy.trim()).then(() => {
+            alert("✅ تم نسخ كافة الأسماء والإيميلات إلى الحافظة متتالية بنجاح!");
         }).catch(err => {
             alert("حدث خطأ أثناء النسخ: " + err);
         });
